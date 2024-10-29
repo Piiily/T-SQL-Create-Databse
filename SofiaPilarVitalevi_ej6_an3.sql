@@ -77,7 +77,7 @@ CREATE Table Facturas
 CodFactura_Fa int IDENTITY(10000,1) NOT NULL,
 CodCuentaCliente_Fa int NOT NULL,
 TotalFactura_Fa money NOT NULL CHECK (TotalFactura_Fa >=0),
-FechaFactura_Fa varchar(10) NOT NULL,
+FechaFactura_Fa datetime DEFAULT getdate() NOT NULL,
 CONSTRAINT PK_Facturas PRIMARY KEY (CodFactura_Fa),
 CONSTRAINT FK_Facturas_Cuentas FOREIGN KEY (CodCuentaCliente_Fa) REFERENCES Cuentas(CodCuenta_Cu)
 )
@@ -132,12 +132,12 @@ SELECT 30406887, 500000, 340897 UNION
 SELECT 30406887, 250000, 10000
 GO
 
-INSERT INTO Facturas(CodCuentaCliente_Fa, TotalFactura_Fa, FechaFactura_Fa)
-SELECT 100000, 100000, 16-10-2024 UNION
-SELECT 100001, 5000, 04-10-2024 UNION
-SELECT 100002, 15000, 01-10-2024 UNION
-SELECT 100003, 65000, 07-10-2024 UNION
-SELECT 100004, 23500, 10-10-2024
+INSERT INTO Facturas(CodCuentaCliente_Fa, TotalFactura_Fa)
+SELECT 100000, 100000 UNION
+SELECT 100001, 5000 UNION
+SELECT 100002, 15000 UNION
+SELECT 100003, 65000 UNION
+SELECT 100004, 23500
 GO
 
 INSERT INTO DetalleFacturas(CodFactura_DF, CodProveedor_DF, CodArticulo_DF, Cantidad_DF, PrecioUnitario_DF)
@@ -238,7 +238,7 @@ CREATE TABLE PedidosProv
 CodPedido_PP int IDENTITY(1000,1) NOT NULL,
 CodProveedor_PP int NOT NULL,
 TotalPedido_PP money NOT NULL DEFAULT 0 CHECK (TotalPedido_PP >=0),
-FechaPedido_PP datetime NOT NULL,
+FechaPedido_PP datetime default getdate() NOT NULL,
 CONSTRAINT PK_PedidosProv PRIMARY KEY (CodPedido_PP),
 CONSTRAINT FK_PedidosProv_Proveedores FOREIGN KEY (CodProveedor_PP) REFERENCES Proveedores(CodProveedor_prov)
 )
@@ -291,10 +291,14 @@ GO
  Informe las tres primeras letras de la descripción de un artículo y su cantidad en stock.
 */
 
+DROP PROCEDURE Punto1_3
+GO
+
 CREATE PROCEDURE Punto1_3
 @ARTICULO CHAR(8)
 AS
 SELECT left((SELECT Articulos.Descripción_art FROM Articulos WHERE Articulos.CodArticulo_art = @ARTICULO), 3)
+SELECT Stock_art FROM Articulos
 GO
 
 EXEC Punto1_3 @ARTICULO = '2'
@@ -309,22 +313,27 @@ BEGIN
 CodPedido_PP int IDENTITY(1000,1) NOT NULL,
 CodProveedor_PP int NOT NULL,
 TotalPedido_PP money NOT NULL DEFAULT 0 CHECK (TotalPedido_PP >=0),
-FechaPedido_PP varchar(20) NOT NULL,
+FechaPedido_PP datetime default getdate() NOT NULL,
 CONSTRAINT PK_PedidosProv PRIMARY KEY (CodPedido_PP),
 CONSTRAINT FK_PedidosProv_Proveedores FOREIGN KEY (CodProveedor_PP) REFERENCES Proveedores(CodProveedor_prov)
 )
+PRINT ('LA TABLA NO EXISTE, TABLA CREADA')
+END
+ELSE
+BEGIN
+PRINT ('LA TABLA EXISTE')
 END
 GO
 
 /*Cree un procedimiento almacenado que introduzca un registro en la tabla pedidos de 
 cualquier artículo con la fecha del momento de la registración.*/
-CREATE PROCEDURE AgregarRegistro
+CREATE PROCEDURE SPAgregarRegistro
 @COPROVEEDOR int,
 @TOTALPEDIDO money
 AS
 BEGIN
-INSERT INTO PedidosProv (CodProveedor_PP, TotalPedido_PP, FechaPedido_PP)
-VALUES (@COPROVEEDOR, @TOTALPEDIDO, GETDATE());
+INSERT INTO PedidosProv (CodProveedor_PP, TotalPedido_PP)
+VALUES (@COPROVEEDOR, @TOTALPEDIDO)
 END
 GO
 
@@ -340,7 +349,7 @@ FROM Proveedores
 /* Crear un trigger en la tabla Detalle de ventas o Detalle de Facturas llamado SUMATOTAL 
 que por cada artículo agregado al detalle multiplique el precio unitario por la cantidad y 
 sume el resultado al total en la tabla Facturas o Ventas*/
-CREATE TRIGGER SUMATOTAL
+CREATE TRIGGER TR_SUMATOTAL
 ON DetalleFacturas
 AFTER INSERT
 AS
@@ -348,6 +357,7 @@ BEGIN
 SET NOCOUNT ON;
 UPDATE Facturas SET TotalFactura_Fa = TotalFactura_Fa + (SELECT Cantidad_DF * PrecioUnitario_DF FROM inserted)
 WHERE CodFactura_Fa = (SELECT CodFactura_DF FROM inserted)
+PRINT ('aCTUALIZACIÓN COMPLETADA CON ÉXITO')
 END
 
 INSERT INTO DetalleFacturas (CodFactura_DF, CodProveedor_DF, CodArticulo_DF, Cantidad_DF, PrecioUnitario_DF)
@@ -357,10 +367,7 @@ GO
 /*Crear un trigger en la tabla Detalle de ventas o Detalle de Facturas llamado BAJASTOCK 
 que por cada artículo agregado al detalle descuente la cantidad en la tabla correspondiente 
 que lleve el stock*/
-DROP TRIGGER BAJASTOCK
-GO
-
-CREATE TRIGGER BAJASTOCK
+CREATE TRIGGER TR_BAJASTOCK
 ON DetalleFacturas
 AFTER INSERT
 AS
@@ -368,9 +375,9 @@ BEGIN
 SET NOCOUNT ON;
 
 UPDATE Articulos
-SET Stock_art = Stock_art - i.Cantidad_DF
-FROM Articulos a
-JOIN inserted i ON a.CodArticulo_art = i.CodArticulo_DF;
+SET Stock_art = Stock_art - (SELECT Cantidad_DF FROM inserted)
+WHERE CodArticulo_art = (SELECT CodArticulo_DF FROM inserted)
+PRINT ('SE ACTUALIZÓ LA TABLA CON ÉXITO')
 END
 GO
 
